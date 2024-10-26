@@ -1,8 +1,11 @@
-# bot.py
+
 import telebot
 from config import TOKEN
-from logic import init_db, add_task, get_tasks, delete_task
+from logic import init_db, add_task, get_tasks, delete_task, get_all_user_ids
 from telebot import types
+from datetime import datetime
+import threading
+import time
 
 # Инициализация бота с использованием токена
 bot = telebot.TeleBot(TOKEN)
@@ -31,9 +34,19 @@ def add(message):
 def process_task_step(message):
     try:
         # Разделяем ввод пользователя на задачу и дату
-        task, due_date = message.text.split(' - ')
-        add_task(message.from_user.id, task, due_date)
-        bot.send_message(message.chat.id, "Задача добавлена!")
+        task, due_date_str = message.text.split(' - ')
+        
+        # Преобразуем введенную строку в объект даты
+        due_date = datetime.strptime(due_date_str, '%Y-%m-%d').date()
+        today = datetime.today().date()
+
+        # Проверяем, является ли дата сегодня или в будущем
+        if due_date < today:
+            bot.send_message(message.chat.id, "Ошибка: Нельзя указать прошедшую дату. Попробуйте снова.")
+        else:
+            add_task(message.from_user.id, task, due_date_str)
+            bot.send_message(message.chat.id, "Задача добавлена!")
+    
     except ValueError:
         bot.send_message(message.chat.id, "Неправильный формат! Используйте: Задача - Дата (YYYY-MM-DD)")
 
@@ -58,6 +71,29 @@ def process_delete_task(message):
     task = message.text
     delete_task(message.from_user.id, task)
     bot.send_message(message.chat.id, "Задача удалена!")
+
+# Функция для отправки уведомлений о задачах на сегодня
+def send_task_notifications():
+    while True:
+        # Получаем текущую дату
+        today = datetime.today().date()
+
+        # Для всех пользователей проверяем задачи на сегодня
+        for user_id in get_all_user_ids():  # Получаем всех пользователей, которые добавляли задачи
+            tasks = get_tasks(user_id)
+            today_tasks = [task for task, due_date in tasks if due_date == today.strftime('%Y-%m-%d')]
+
+            # Отправляем уведомления, если есть задачи на сегодня
+            if today_tasks:
+                task_list = "\n".join(today_tasks)
+                bot.send_message(user_id, f"Напоминание! На сегодня у вас есть следующие задачи:\n{task_list}")
+
+        # Ждем 30 минут перед следующей проверкой
+        time.sleep(1500)
+
+# Запуск потока для отправки уведомлений
+notification_thread = threading.Thread(target=send_task_notifications)
+notification_thread.start()
 
 # Запуск бота
 bot.polling(none_stop=True)

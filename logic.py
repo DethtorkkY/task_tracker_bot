@@ -33,6 +33,19 @@ def add_task(user_id, task, due_date):
     conn.commit()
     conn.close()
 
+def get_all_user_ids():
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT DISTINCT user_id FROM tasks
+    ''')
+
+    user_ids = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    return user_ids
+
 # Получение списка задач пользователя
 def get_tasks(user_id):
     conn = sqlite3.connect(DATABASE)
